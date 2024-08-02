@@ -7,13 +7,12 @@
 #define HC_USER_OPTIONS_H
 
 #include <getopt.h>
-#include "types.h"
 
 int user_options_init (hashcat_ctx_t *hashcat_ctx);
 
 void user_options_destroy (hashcat_ctx_t *hashcat_ctx);
 
-int user_options_getopt (hashcat_ctx_t *hashcat_ctx, int *argc, char ***argv, bool restore);
+int user_options_getopt (hashcat_ctx_t *hashcat_ctx, int argc, char **argv);
 
 int user_options_sanity (hashcat_ctx_t *hashcat_ctx);
 

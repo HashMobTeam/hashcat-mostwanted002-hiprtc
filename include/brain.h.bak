@@ -39,9 +39,6 @@
 #endif
 
 #include "xxhash.h"
-#include "inc_types.h"
-#include "types.h"
-#include <glob.h>
 
 static const int BRAIN_CLIENT_CONNECT_TIMEOUT     = 5;
 static const int BRAIN_SERVER_TIMER               = 5 * 60;

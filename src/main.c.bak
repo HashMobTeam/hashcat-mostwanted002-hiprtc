@@ -1264,7 +1264,7 @@ int main (int argc, char **argv)
 
   // parse commandline parameters and check them
 
-  if (user_options_getopt (hashcat_ctx, &argc, &argv, false) == -1)
+  if (user_options_getopt (hashcat_ctx, argc, argv) == -1)
   {
     user_options_destroy (hashcat_ctx);
 

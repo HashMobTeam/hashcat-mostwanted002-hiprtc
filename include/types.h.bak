@@ -846,7 +846,6 @@ typedef enum user_options_map
   IDX_VERSION                   = 'V',
   IDX_WORDLIST_AUTOHEX_DISABLE  = 0xff54,
   IDX_WORKLOAD_PROFILE          = 'w',
-  IDX_HASHMOB_ID                = 'H',
 
 } user_options_map_t;
 
@@ -2463,8 +2462,6 @@ typedef struct user_options
   u32          workload_profile;
   u64          limit;
   u64          skip;
-  char         *hashmob_id;
-  char         **cmdl_args;
 
 } user_options_t;
 

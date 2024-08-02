@@ -355,9 +355,7 @@ int restore_ctx_init (hashcat_ctx_t *hashcat_ctx, int argc, char **argv)
 
     user_options_init (hashcat_ctx);
 
-    int argc = (int) rd->argc;
-    if (user_options_getopt (hashcat_ctx, &argc, &rd->argv, true) == -1) return -1;
-    rd->argc = (u32) argc;
+    if (user_options_getopt (hashcat_ctx, rd->argc, rd->argv) == -1) return -1;
 
     restore_ctx->restore_execute = true;
   }

@@ -21,9 +21,9 @@
 #endif
 
 #ifdef WITH_BRAIN
-static const char *const short_options = "hVvm:a:r:j:k:g:o:t:d:D:n:u:T:c:p:s:l:1:2:3:4:iIbw:OMSY:H:z";
+static const char *const short_options = "hVvm:a:r:j:k:g:o:t:d:D:n:u:T:c:p:s:l:1:2:3:4:iIbw:OMSY:z";
 #else
-static const char *const short_options = "hVvm:a:r:j:k:g:o:t:d:D:n:u:T:c:p:s:l:1:2:3:4:iIbw:OMSY:H:";
+static const char *const short_options = "hVvm:a:r:j:k:g:o:t:d:D:n:u:T:c:p:s:l:1:2:3:4:iIbw:OMSY:";
 #endif
 
 static char *const SEPARATOR = ":";
@@ -153,7 +153,6 @@ static const struct option long_options[] =
   {"brain-password",            required_argument, NULL, IDX_BRAIN_PASSWORD},
   {"brain-session",             required_argument, NULL, IDX_BRAIN_SESSION},
   {"brain-session-whitelist",   required_argument, NULL, IDX_BRAIN_SESSION_WHITELIST},
-  {"hashmob-id",                required_argument, NULL, IDX_HASHMOB_ID},
   #endif
   {NULL,                        0,                 NULL, 0 }
 };
@@ -299,8 +298,6 @@ int user_options_init (hashcat_ctx_t *hashcat_ctx)
   user_options->hc_bin                    = PROGNAME;
   user_options->hc_argc                   = 0;
   user_options->hc_argv                   = NULL;
-  user_options->hashmob_id                = NULL;
-  user_options->cmdl_args                 = NULL;
 
   return 0;
 }
@@ -315,191 +312,13 @@ void user_options_destroy (hashcat_ctx_t *hashcat_ctx)
   //memset (user_options, 0, sizeof (user_options_t));
 }
 
-bool has (char **haystack, char *needle)
+int user_options_getopt (hashcat_ctx_t *hashcat_ctx, int argc, char **argv)
 {
-  if (haystack == NULL) return false;
-  int n = strlen (needle);
-  for (char **p = (char **) haystack; *p; p++)
-  {
-    if (strncmp (*p, needle, n) == 0 && ((*p)[n] == '=' || (*p)[n] == '\0' ))
-    {
-      return true;
-    }
-  }
-  return false;
-}
-
-bool load_hashcat_config (hashcat_ctx_t *hashcat_ctx, char ***args, int *num_args)
-{
-    HCFILE config_fp;
-    if (hc_fopen (&config_fp, "hashcat.config", "r") == false)
-    {
-      event_log_error (hashcat_ctx, "Failed to open hashcat.config.");
-      *args = NULL;
-      *num_args = 0;
-      return false;
-    }
-
-    const int MAX_CONFIG_ARGS = 255;
-
-    char **config_args = (char **) hcmalloc (sizeof (char *) * (MAX_CONFIG_ARGS+1));
-    char **config_args_end = config_args;
-    char *line_buf = (char *) hcmalloc (HCBUFSIZ_LARGE+1);
-
-    while (!hc_feof (&config_fp))
-    {
-      size_t line_len = fgetl (&config_fp, line_buf, HCBUFSIZ_LARGE);
-
-      if (line_len == 0) continue;
-
-      event_log_info (hashcat_ctx, "using option from hashcat.config: %s", line_buf);
-
-      const char *start = line_buf;
-      char *end;
-      // Split the line into substrings separated by a space,
-      // so you can have e.g.
-      // -1 ?l?d
-      // -2 @#%
-      // in your hashcat.config.
-      while ((end = strchr(start, ' ')) != NULL)
-      {
-        *end = '\0';
-        if (end - start > 0)
-        {
-          if (config_args_end - config_args >= MAX_CONFIG_ARGS)
-          {
-            event_log_error (hashcat_ctx, "Maximum of config args reached. Ignoring the rest.");
-            goto _break;
-          }
-          *config_args_end++ = strdup (start);
-        }
-        start = end + 1;
-      }
-      if (*start != '\0')
-      {
-          if (config_args_end - config_args >= MAX_CONFIG_ARGS)
-          {
-            event_log_error (hashcat_ctx, "Maximum of config args reached. Ignoring the rest.");
-            break;
-          }
-          *config_args_end++ = strdup (start);
-      }
-    }
-
-_break:
-
-    hcfree (line_buf);
-    hc_fclose (&config_fp);
-
-    if (config_args_end == config_args)
-    {
-      // The config file is empty.
-      hcfree (config_args);
-      *args = NULL;
-      *num_args = 0;
-      return false;
-    }
-
-    *config_args_end = NULL;
-    *args = config_args;
-    *num_args = config_args_end - config_args;
-
-    return true;
-}
-
-void update_argc_and_argv (hashcat_ctx_t *hashcat_ctx, int *argc_ptr, char ***argv_ptr, const char *hashmob_id, char **config_args, int num_config_args)
-{
-  int argc = *argc_ptr;
-  char **argv = *argv_ptr;
-  char **new_argv = (char **) hcmalloc (sizeof (char *) * (argc + num_config_args + 2));
-  char **p = new_argv;
-
-  // Add the program name.
-  *p++ = argv[0];
-
-  // If -H/--hashmob-id is used, add %ID%.left as the first argument.
-  if (hashmob_id != NULL)
-  {
-    const size_t MAX = 255;
-    char *hashfile = (char *) hcmalloc (MAX+1);
-    snprintf (hashfile, MAX, "%s.left", hashmob_id);
-    hashfile[MAX] = '\0';
-    *p++ = hashfile;
-    event_log_info (hashcat_ctx, "using hashfile: %s", hashfile);
-  }
-
-  // Add options from hashcat.config
-  if (config_args != NULL)
-  {
-    while (*config_args)
-    {
-      *p++ = *config_args++;
-    }
-  }
-
-  // Copy options and arguments from the command line.
-  for (char **q = argv+1; *q; q++)
-  {
-    *p++ = *q;
-  }
-
-  *argc_ptr = p - new_argv;
-  *p = NULL;
-  *argv_ptr = new_argv;
-}
-
-int user_options_getopt (hashcat_ctx_t *hashcat_ctx, int *argc_ptr, char ***argv_ptr, bool restore)
-{
-  int argc = *argc_ptr;
-  char **argv = *argv_ptr;
-
   user_options_t *user_options = hashcat_ctx->user_options;
-
-  // Save the original command-line arguments for later.
-  // We'll need them when an option from the config file,
-  // for example --loopback, conflicts with another one.
-  char **cmdl_args = (char **) hcmalloc (sizeof (char *) * (argc+1));
-  memcpy(cmdl_args, argv, sizeof (char *) * (argc+1));
-  user_options->cmdl_args = cmdl_args;
 
   int c = -1;
 
   int option_index;
-
-   // Don't load hashcat.config and ignore --hashmob-id if we are
-   // restoring the session.
-   // %SESSION%.restore should already contain all the options and arguments.
-  if (restore == false)
-  {
-    optind = 1;
-    optopt = 0;
-    option_index = 0;
-
-    // Check if -H/--hashmob-id is on the command line,
-    // and get the HashMob ID.
-    const char *hashmob_id = NULL;
-    while ((c = getopt_long (argc, argv, short_options, long_options, &option_index)) != -1)
-    {
-      switch (c)
-      {
-        case IDX_HASHMOB_ID:
-          hashmob_id = optarg;
-          event_log_info (hashcat_ctx, "HashMob ID set to '%s'", hashmob_id);
-          break;
-      }
-    }
-
-    // Load hashcat.config
-    char **config_args;
-    int num_config_args;
-    if (load_hashcat_config (hashcat_ctx, &config_args, &num_config_args) == true || hashmob_id != NULL)
-    {
-      // Modify the command line.
-      update_argc_and_argv (hashcat_ctx, &argc, &argv, hashmob_id, config_args, num_config_args);
-      *argc_ptr = argc;
-      *argv_ptr = argv;
-    }
-  }
 
   optind = 1;
   optopt = 0;
@@ -729,7 +548,6 @@ int user_options_getopt (hashcat_ctx_t *hashcat_ctx, int *argc_ptr, char ***argv
       case IDX_BRAIN_SESSION:             user_options->brain_session             = hc_strtoul (optarg, NULL, 16);   break;
       case IDX_BRAIN_SESSION_WHITELIST:   user_options->brain_session_whitelist   = optarg;                          break;
       #endif
-      case IDX_HASHMOB_ID:                user_options->hashmob_id                = optarg;                          break;
     }
   }
 
@@ -946,13 +764,9 @@ int user_options_sanity (hashcat_ctx_t *hashcat_ctx)
 
   if (user_options->limit_chgd == true && user_options->loopback == true)
   {
-    if (has (user_options->cmdl_args, "--loopback"))
-    {
-      event_log_error (hashcat_ctx, "Combining --limit with --loopback is not allowed.");
+    event_log_error (hashcat_ctx, "Combining --limit with --loopback is not allowed.");
 
-      return -1;
-    }
-    user_options->loopback = false;
+    return -1;
   }
 
   if (user_options->hash_mode >= MODULE_HASH_MODES_MAXIMUM)
@@ -1329,24 +1143,16 @@ int user_options_sanity (hashcat_ctx_t *hashcat_ctx)
     {
       if ((user_options->rp_files_cnt == 0) && (user_options->rp_gen == 0))
       {
-        if (has (user_options->cmdl_args, "--loopback"))
-        {
-          event_log_error (hashcat_ctx, "Parameter --loopback requires either -r/--rules-file or -g/--rules-generate.");
+        event_log_error (hashcat_ctx, "Parameter --loopback requires either -r/--rules-file or -g/--rules-generate.");
 
-          return -1;
-        }
-        user_options->loopback = false;
+        return -1;
       }
     }
     else
     {
-      if (has (user_options->cmdl_args, "--loopback"))
-      {
-        event_log_error (hashcat_ctx, "Parameter --loopback is only allowed in attack mode 0 (straight).");
+      event_log_error (hashcat_ctx, "Parameter --loopback is only allowed in attack mode 0 (straight).");
 
-        return -1;
-      }
-      user_options->loopback = false;
+      return -1;
     }
   }
 
@@ -1354,24 +1160,16 @@ int user_options_sanity (hashcat_ctx_t *hashcat_ctx)
   {
     if ((user_options->attack_mode != ATTACK_MODE_STRAIGHT) && (user_options->attack_mode != ATTACK_MODE_ASSOCIATION))
     {
-      if (has (user_options->cmdl_args, "--debug-mode"))
-      {
-        event_log_error (hashcat_ctx, "Parameter --debug-mode option is only allowed in attack mode 0 (straight).");
+      event_log_error (hashcat_ctx, "Parameter --debug-mode option is only allowed in attack mode 0 (straight).");
 
-        return -1;
-      }
-      user_options->debug_mode = 0;
+      return -1;
     }
 
     if ((user_options->rp_files_cnt == 0) && (user_options->rp_gen == 0))
     {
-      if (has (user_options->cmdl_args, "--debug-mode"))
-      {
-        event_log_error (hashcat_ctx, "Use of --debug-mode requires -r/--rules-file or -g/--rules-generate.");
+      event_log_error (hashcat_ctx, "Use of --debug-mode requires -r/--rules-file or -g/--rules-generate.");
 
-        return -1;
-      }
-      user_options->debug_mode = 0;
+      return -1;
     }
   }
 
@@ -2027,32 +1825,6 @@ void user_options_preprocess (hashcat_ctx_t *hashcat_ctx)
   user_options_t *user_options = hashcat_ctx->user_options;
 
   // some options can influence or overwrite other options
-
-  // Set --outfile, --potfile-path, --debug-mode and --debug-file
-  // when -H/--hashmob-id is used.
-  if (user_options->hashmob_id != NULL)
-  {
-    user_options->debug_mode = 4; // Later, we set it to 0 if it conflicts with another option.
-
-    const size_t MAX_VALUE_LEN = 255;
-
-    user_options->outfile      = (char *) hcmalloc (MAX_VALUE_LEN+1);
-    user_options->debug_file   = (char *) hcmalloc (MAX_VALUE_LEN+1);
-    user_options->potfile_path = (char *) hcmalloc (MAX_VALUE_LEN+1);
-
-    snprintf (user_options->outfile     , MAX_VALUE_LEN, "%s.new"       , user_options->hashmob_id);
-    snprintf (user_options->potfile_path, MAX_VALUE_LEN, "%s.found"     , user_options->hashmob_id);
-    snprintf (user_options->debug_file  , MAX_VALUE_LEN, "%s.debug_rule", user_options->hashmob_id);
-
-    user_options->outfile      [MAX_VALUE_LEN] = '\0';
-    user_options->potfile_path [MAX_VALUE_LEN] = '\0';
-    user_options->debug_file   [MAX_VALUE_LEN] = '\0';
-
-    event_log_info (hashcat_ctx, "using option: --outfile=%s"     , user_options->outfile);
-    event_log_info (hashcat_ctx, "using option: --potfile-path=%s", user_options->potfile_path);
-    event_log_info (hashcat_ctx, "using option: --debug-file=%s"  , user_options->debug_file);
-    event_log_info (hashcat_ctx, "using option: --debug-mode=%d"  , user_options->debug_mode);
-  }
 
   #ifdef WITH_BRAIN
   if (user_options->brain_client == true)
